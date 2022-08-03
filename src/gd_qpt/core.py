@@ -154,3 +154,17 @@ def M_k(k):
         mkmat = np.einsum("nde, mfg -> nmdfeg", mkmat, M_1)
         mkmat = mkmat.reshape(6 ** i, 2 ** i, 2 ** i)
     return mkmat
+
+
+def choi(kraus_ops):
+    """Takes the Kraus reprensentation of a channel and returns the Choi matrix.
+
+    Args:
+        kraus_ops (np.ndarray): The (k, N, N)-array representing k Kraus ops.
+
+    Returns:
+        np.array: A (N^2, N^2) array representing the Choi matrix.
+    """
+    r, N, N = kraus_ops.shape
+    vectorized_kraus = kraus_ops.reshape(r, N ** 2)
+    return np.einsum("ij, il -> jl", vectorized_kraus, vectorized_kraus.conj())

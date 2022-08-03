@@ -4,11 +4,18 @@ from functools import partial
 import numpy as np
 
 
+from qutip import rand_unitary
+
 import jax
 from jax import jit
 from jax import vmap
 import jax.numpy as jnp
 from jax.config import config
+
+from tqdm.auto import tqdm
+
+from gd_qpt.core import choi
+
 
 config.update("jax_enable_x64", True)
 
@@ -37,24 +44,25 @@ predict = vmap(vmap(_predict, in_axes=[None, 0, None]), in_axes=[None, None, 0])
 
 @partial(jit, static_argnums=4)
 def loss(params, data=None, probes=None, measurements=None, num_kraus=None):
-    """Loss function for the trainnig.
+    """Loss function for the training assuming a predict function that can 
+    generate probabilities for a measurement from the given process representation
+    captured in params.
 
     Args:
-        params (_type_): Network parameters
-        rng (_type_): Random number seq
-        d_batch (_type_): A (batchsize x batchsize) input of probabilies
-        probes (_type_): The probe operators. Note that these are assumed to be
-                         Pauli vectors that the predict function knows how
-                         to use.
-        measurements (_type_): The measurement operators as Pauli vectors.
+        params (array): Parameters to optimize, e.g., Kraus operators.
+        data (array): Data representing measured probabilities.
+        probes (array): The probe operators.
+        measurements (array): The measurement operators as Pauli vectors.
+        num_kraus (int): The number of Kraus operators.
 
     Returns:
         loss (float): A scalar loss
     """
     k_ops = get_unblock(params, num_kraus)
     data_pred = predict(k_ops, probes, measurements)
+
     l2 = jnp.sum(((data - data_pred)**2))
-    return l2 + 0.01*jnp.linalg.norm(params, ord=1)
+    return l2 + 0.001*jnp.linalg.norm(params, 1)
 
 
 @jit
@@ -106,44 +114,55 @@ def get_unblock(kmat, num_kraus):
 
 
 
+def generate_batch(batch_size, len_indices):
+    """Generates random indices to select a batch of the data 
+        (probes x measurements) assuming same number of probes and measurements
+
+    Args:
+        batch_size (int): Batch size
+        len_indices (int): Length of training data 
+                          (probes and measurements are assumed to be the same)
+
+    Returns:
+        idx : A meshgrid of indices for selecting the data.
+        idx1, idx2 (array): Indices for the probes and measurements.
+    """
+    idx1, idx2 = np.random.randint(0, len_indices, size=[2, batch_size])
+    idx = tuple(np.meshgrid(idx1, idx2))
+    return idx, idx1, idx2
+
 class GradientDescent(object):
-    def __init__(self, dim:int, num_kraus:int, lr=0.1, alpha=0.999,
-                 batch_size=32, maxiter=10000):
+    def __init__(self, N:int, num_kraus:int, lr=0.1, alpha=0.999):
         """Initialization of the the fitter.
 
         Args:
-            dim (int): Hilbert space dimension
+            N (int): Hilbert space dimension
         """
-        params_init = jnp.array([rand_unitary(2**k, density=0.5).full()/np.sqrt(num_kraus) for w in range(num_kraus)])
-        params = get_block(params_init)
-
-        self.dim = dim
+        self.N = N
         self.num_kraus = num_kraus
-        self.params = params
         self.lr = lr 
         self.alpha = alpha
-        self.params = params
-        self.batch_size = batch_size
-        self.maxiter = maxiter
 
-
-    def step(self, A, B, data):
-        """_summary_
-
-        Args:
-            ops (_type_): _description_
-            data_vector (_type_): _description_
-        """
-        grads = jax.grad(loss)(self.params, data, A, B, num_kraus=self.num_kraus)
-        grads = jnp.conj(grads)
-        grads = grads/jnp.linalg.norm(grads)
-        self.params = stiefel_update(self.params, grads, self.lr)
-        self.lr = self.alpha*self.lr
-
-    def fit(self, ops, data):
+    def fit(self, data, probes, measurements, batch_size, maxiters=1000):
         """_summary_
         """
-        k_ops = get_unblock(self.params, self.num_kraus)
+        params_init = jnp.array([rand_unitary(self.N,
+                                 density=0.5).full()/np.sqrt(self.num_kraus) for w in range(self.num_kraus)])
+        params = get_block(params_init)
+        lr = self.lr
+
+        for step in tqdm(range(maxiters)):
+            idx, idx1, idx2 = generate_batch(batch_size, probes.shape[0])
+
+            grads = jax.grad(loss)(params, data.T[idx].real, probes[idx1], measurements[idx2],
+                                   num_kraus=self.num_kraus)
+            grads = jnp.conj(grads)
+            grads = grads/jnp.linalg.norm(grads)
+
+            params = stiefel_update(params, grads, lr)
+            lr = self.alpha*lr
+
+        k_ops = get_unblock(params, self.num_kraus)
         choi_gd_pred = choi(k_ops)
 
         return choi_gd_pred
