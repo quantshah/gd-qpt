@@ -114,7 +114,7 @@ def get_unblock(kmat, num_kraus):
 
 
 
-def generate_batch(batch_size, len_indices):
+def generate_batch(batch_size, num_probes, num_measurements):
     """Generates random indices to select a batch of the data 
         (probes x measurements) assuming same number of probes and measurements
 
@@ -127,7 +127,8 @@ def generate_batch(batch_size, len_indices):
         idx : A meshgrid of indices for selecting the data.
         idx1, idx2 (array): Indices for the probes and measurements.
     """
-    idx1, idx2 = np.random.randint(0, len_indices, size=[2, batch_size])
+    idx1 = np.random.randint(0, num_probes, size=[batch_size])
+    idx2 = np.random.randint(0, num_measurements, size=[batch_size])
     idx = tuple(np.meshgrid(idx1, idx2))
     return idx, idx1, idx2
 
@@ -152,7 +153,7 @@ class GradientDescent(object):
         lr = self.lr
 
         for step in tqdm(range(maxiters)):
-            idx, idx1, idx2 = generate_batch(batch_size, probes.shape[0])
+            idx, idx1, idx2 = generate_batch(batch_size, probes.shape[0], measurements.shape[0])
 
             grads = jax.grad(loss)(params, data.T[idx].real, probes[idx1], measurements[idx2],
                                    num_kraus=self.num_kraus)
