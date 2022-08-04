@@ -12,6 +12,11 @@ from jax.config import config
 config.update("jax_enable_x64", True)
 
 
+import matplotlib.pyplot as plt
+from matplotlib import colors
+import matplotlib
+
+
 def tensor_product_list(arr: list, repeat: int)->list:
     """Create a list with all tensor products of elements in arr.
 
@@ -168,3 +173,243 @@ def choi(kraus_ops):
     r, N, N = kraus_ops.shape
     vectorized_kraus = kraus_ops.reshape(r, N ** 2)
     return np.einsum("ij, il -> jl", vectorized_kraus, vectorized_kraus.conj())
+
+
+def destroy(N):
+    """Destruction (lowering or annihilation) operator.
+    
+    Args:
+        N (int): Dimension of Hilbert space.
+    Returns:
+         :obj:`jnp.ndarray`: Matrix representation for an N-dimensional annihilation operator
+    """
+    if not isinstance(N, (int, jnp.integer)):  # raise error if N not integer
+        raise ValueError("Hilbert space dimension must be an integer value")
+    data = jnp.sqrt(jnp.arange(1, N, dtype=jnp.float32))
+    mat = np.zeros((N, N))
+    np.fill_diagonal(
+        mat[:, 1:], data
+    )  # np.full_diagonal is not implemented in jax.numpy
+    return jnp.asarray(mat, dtype=jnp.complex64)  # wrap as a jax.numpy array
+
+
+# TODO: apply jax device array data type to everything all at once
+# ind = jnp.arange(1, N, dtype=jnp.float32)
+# ptr = jnp.arange(N + 1, dtype=jnp.float32)
+# ptr = index_update(
+#    ptr, index[-1], N - 1
+# )    index_update mutates the jnp array in-place like numpy
+# return (
+#    csr_matrix((data, ind, ptr), shape=(N, N))
+#    if full is True
+#    else csr_matrix((data, ind, ptr), shape=(N, N)).toarray()
+# )
+
+
+def create(N):
+    """Creation (raising) operator.
+    Args:
+        N (int): Dimension of Hilbert space 
+    Returns:
+         :obj:`jnp.ndarray`: Matrix representation for an N-dimensional creation operator
+    """
+    if not isinstance(N, (int, jnp.integer)):  # raise error if N not integer
+        raise ValueError("Hilbert space dimension must be an integer value")
+    data = jnp.sqrt(jnp.arange(1, N, dtype=jnp.float32))
+    mat = np.zeros((N, N))
+    np.fill_diagonal(mat[1:], data)  # np.full_diagonal is not implemented in jax.numpy
+    return jnp.asarray(mat, dtype=jnp.complex64)  # wrap as a jax.numpy array
+    # ind = jnp.arange(0, N - 1, dtype=jnp.float32)
+    # ptr = jnp.arange(N + 1, dtype=jnp.float32)
+    # ptr = index_update(
+    #    ptr, index[0], 0
+    # )  # index_update mutates the jnp array in-place like numpy
+    # return (
+    #    csr_matrix((data, ind, ptr), shape=(N, N))
+    #    if full is True
+    #    else csr_matrix((data, ind, ptr), shape=(N, N)).toarray()
+    # )
+    # return data
+
+
+def _kth_diag_indices(a, k):
+    rows, cols = jnp.diag_indices_from(a)
+    if k < 0:
+        return rows[-k:], cols[:k]
+    elif k > 0:
+        return rows[:-k], cols[k:]
+    else:
+        return rows, cols
+
+
+def destroy(N):
+    """Destruction (lowering or annihilation) operator.
+    
+    Args:
+        N (int): Dimension of Hilbert space.
+    Returns:
+         :obj:`jnp.ndarray`: Matrix representation for an N-dimensional annihilation operator
+    """
+    if not isinstance(N, (int, jnp.integer)):  # raise error if N not integer
+        raise ValueError("Hilbert space dimension must be an integer value")
+    data = jnp.sqrt(jnp.arange(1, N, dtype=jnp.float32))
+    mat = np.zeros((N, N))
+    np.fill_diagonal(
+        mat[:, 1:], data
+    )  # np.full_diagonal is not implemented in jax.numpy
+    return jnp.asarray(mat, dtype=jnp.complex64)  # wrap as a jax.numpy array
+
+
+# TODO: apply jax device array data type to everything all at once
+# ind = jnp.arange(1, N, dtype=jnp.float32)
+# ptr = jnp.arange(N + 1, dtype=jnp.float32)
+# ptr = index_update(
+#    ptr, index[-1], N - 1
+# )    index_update mutates the jnp array in-place like numpy
+# return (
+#    csr_matrix((data, ind, ptr), shape=(N, N))
+#    if full is True
+#    else csr_matrix((data, ind, ptr), shape=(N, N)).toarray()
+# )
+
+
+def create(N):
+    """Creation (raising) operator.
+    Args:
+        N (int): Dimension of Hilbert space 
+    Returns:
+         :obj:`jnp.ndarray`: Matrix representation for an N-dimensional creation operator
+    """
+    if not isinstance(N, (int, jnp.integer)):  # raise error if N not integer
+        raise ValueError("Hilbert space dimension must be an integer value")
+    data = jnp.sqrt(jnp.arange(1, N, dtype=jnp.float32))
+    mat = np.zeros((N, N))
+    np.fill_diagonal(mat[1:], data)  # np.full_diagonal is not implemented in jax.numpy
+    return jnp.asarray(mat, dtype=jnp.complex64)  # wrap as a jax.numpy array
+    # ind = jnp.arange(0, N - 1, dtype=jnp.float32)
+    # ptr = jnp.arange(N + 1, dtype=jnp.float32)
+    # ptr = index_update(
+    #    ptr, index[0], 0
+    # )  # index_update mutates the jnp array in-place like numpy
+    # return (
+    #    csr_matrix((data, ind, ptr), shape=(N, N))
+    #    if full is True
+    #    else csr_matrix((data, ind, ptr), shape=(N, N)).toarray()
+    # )
+    # return data
+
+
+def _kth_diag_indices(a, k):
+    rows, cols = jnp.diag_indices_from(a)
+    if k < 0:
+        return rows[-k:], cols[:k]
+    elif k > 0:
+        return rows[:-k], cols[k:]
+    else:
+        return rows, cols
+
+
+class Displace:
+    r"""Displacement operator for optical phase space.
+    
+    .. math:: D(\alpha) = \exp(\alpha a^\dagger -\alpha^* a)
+    Args:
+    n (int): dimension of the displace operator
+    """
+
+    def __init__(self, n):
+        # The off-diagonal of the real-symmetric similar matrix T.
+        sym = (2.0 * (jnp.arange(1, n) % 2) - 1) * jnp.sqrt(jnp.arange(1, n))
+        # Solve the eigensystem.
+        mat = jnp.zeros((n, n), dtype=jnp.complex128)
+
+        i, j = _kth_diag_indices(mat, -1)
+        mat = mat.at[i, j].set(sym)
+
+        i, j = _kth_diag_indices(mat, 1)
+        mat = mat.at[i, j].set(sym)
+
+        self.evals, self.evecs = jnp.linalg.eigh(mat)
+        self.range = jnp.arange(n)
+        self.t_scale = 1j ** (self.range % 2)
+
+    def __call__(self, alpha):
+        r"""Callable with ``alpha`` as the displacement parameter
+        Args:
+            alpha (float): Displacement parameter
+        Returns:
+            :obj:`jnp.ndarray`: Matrix representing :math:`n-`dimensional displace operator
+            with :math:`\alpha` displacement
+        
+        """
+        # Diagonal of the transformation matrix P, and apply to eigenvectors.
+        transform = jnp.where(
+            alpha == 0,
+            self.t_scale,
+            self.t_scale * (alpha / jnp.abs(alpha)) ** -self.range,
+        )
+        evecs = transform[:, None] * self.evecs
+        # Get the exponentiated diagonal.
+        diag = jnp.exp(1j * jnp.abs(alpha) * self.evals)
+        return jnp.conj(evecs) @ (diag[:, None] * evecs.T)
+
+
+def dag(state):
+    r"""Returns conjugate transpose of a given state, represented by :math:`A^{\dagger}`, where :math:`A` is
+    a quantum state represented by a ket, a bra or, more generally, a density matrix.
+    Args:
+        state (:obj:`jnp.ndarray`): State to perform the dagger operation on
+     
+    Returns:
+        :obj:`jnp.ndarray`: Conjugate transposed jax.numpy representation of the input state
+ 
+    """
+    return jnp.conjugate(jnp.transpose(state))
+
+@jit
+def expect(oper, state):
+    """Calculate the expectation value of an operator with respect to a density matrix
+    
+    Args:
+        oper, state (ndarray): The operator and state of dimensions (N, N) where N is the
+                               Hilbert space size
+    """
+    # convert to jax.numpy arrays in case user gives raw numpy
+    oper, state = jnp.asarray(oper), jnp.asarray(state)
+    # Tr(rho*op)
+    return jnp.trace(jnp.dot(state, oper)).real
+
+
+def plot_choi(choi, title="", y=0.95, norm=None, cbar=False):
+    """Plot the real and imaginary parts of the Choi matrix.
+
+    Args:
+        choi (np.array): The Choi matrix for the process
+        title (str, optional): The title for the plot.
+        norm (colors.TwoSlopeNorm, optional): The normalization for the plot.
+    """
+    fig, ax = plt.subplots(1, 2, sharex=True, sharey=True)
+    cmap = "RdBu"
+
+    
+    norm = colors.TwoSlopeNorm(vmin=-np.max(np.abs(choi.real)), vcenter=0, vmax=np.max(np.abs(choi.real)))
+    im = ax[0].matshow(choi.real, cmap=cmap, norm=norm)
+    norm = colors.TwoSlopeNorm(vmin=-np.max(np.abs(choi.imag)), vcenter=0, vmax=np.max(np.abs(choi.imag)))
+    im2 = ax[1].matshow(choi.imag, cmap=cmap, norm=norm)
+
+    if cbar is True:
+        cbar_ax = plt.colorbar(im, ax=[ax[0]], fraction=0.021, pad=0.04)
+        cbar_ax = plt.colorbar(im2, ax=[ax[1]], fraction=0.021, pad=0.04)
+        # ticks=[-1, -0.5, 0, 0.5, 1]
+        # cbar_ax.ax.set_yticklabels(["-1", "-0.5", "0", "0.5", "1"])
+
+    ax[0].set_xlabel("Re")
+    ax[1].set_xlabel("Im")
+
+    ax[0].set_xticks([0, int(choi.shape[0]/2), choi.shape[0]])
+    ax[0].set_yticks([0, int(choi.shape[0]/2), choi.shape[0]])
+
+    ax[0].set_xticks([0, int(choi.shape[0]/2), choi.shape[0]])
+    ax[0].set_yticks([0, int(choi.shape[0]/2), choi.shape[0]])
+
+    plt.suptitle(title, y=y)
